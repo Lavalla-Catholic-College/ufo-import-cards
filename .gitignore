@@ -1,2 +1,3 @@
 *.csv
+!demo.csv
 run.bat

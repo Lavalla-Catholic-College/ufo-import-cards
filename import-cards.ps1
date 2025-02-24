@@ -23,8 +23,9 @@ if (-not (Test-Path $Path)) {
     Exit 1
 }
 
-# Then we read the CSV file
-$data = Import-Csv -Path $Path
+# Then we read the CSV file. We force it to become an array, otherwise Powershell gets a bit funny
+# and .count is empty
+[array]$data = Import-Csv -Path $Path
 
 # Check if the file has exactly two required columns
 $requiredColumns = @("login", "tid")
@@ -84,7 +85,7 @@ foreach ($row in $data) {
     Write-Progress -Activity "Processing CSV" -Status "Updating login for '$login@$Domain'" -PercentComplete (($count / $total) * 100)
     
     try {
-        # Add-MomoUserIdentity -Email "$login@$Domain" -IdentityType 'CardNumber' -IdentityValue "$tid"
+        Add-MomoUserIdentity -Email "$login@$Domain" -IdentityType 'CardNumber' -IdentityValue "$tid"
     }
     catch {
         Write-Error "Failed to process login: $login@$Domain with tid: $tid - $_"
