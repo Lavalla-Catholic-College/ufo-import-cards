@@ -1,0 +1,95 @@
+[CmdletBinding(DefaultParameterSetName = 'Interactive')]
+param (
+    [Parameter(Mandatory = $true, ParameterSetName = "Interactive")]
+    [Parameter(Mandatory = $true, ParameterSetName = "NonInteractive")]
+    [string]$Path = "login.csv", # The path to the CSV file. It MUST have two fields in it, login and tid
+    [string]$UFOURL, # The URL to your UniFLOW Online Instance
+    [string]$Domain, # Your email domain (e.g. example.com) which is used to match users
+
+    [Parameter(Mandatory = $true, ParameterSetName = "Interactive")]
+    [switch]$Interactive = $true, # If true, you'll be asked to log in to UniFLOW Online 
+
+    [Parameter(Mandatory = $true, ParameterSetName = "NonInteractive")]
+    [string]$UFOClientID = $Null, # The UniFLOW Online Client ID
+    [string]$UFOClientSecret = $Null # The UniFLOW Online Secret
+)
+
+# This can be installed by running Install-Script -Name NTware.Ufo.PowerShell.ObjectManagement in Powershell 
+Import-Module NTware.Ufo.PowerShell.ObjectManagement
+
+# First, check if the CSV file exists
+if (-not (Test-Path $Path)) {
+    Write-Error -Message "The specified CSV file does not exist." -Category ResourceUnavailable
+    Exit 1
+}
+
+# Then we read the CSV file
+$data = Import-Csv -Path $Path
+
+# Check if the file has exactly two required columns
+$requiredColumns = @("login", "tid")
+$csvColumns = ($data | Get-Member -MemberType NoteProperty).Name
+
+# If the columns in the CSV file don't exactly match our required columns, exit
+if ((Compare-Object -ReferenceObject $requiredColumns -DifferenceObject $csvColumns).Count -gt 0) {
+    Write-Error -Message "CSV file must contain only 'login' and 'tid' columns." -Category InvalidData
+    Exit 1
+}
+
+try {
+    # If -Interactive has been set, ignore the Client ID and Client Secret and open the browser to log in
+    # If it's not been set, grab the credentials from the command line
+    if($Interactive) {
+        Open-MomoConnection -TenantDomain $UFOURL -Interactive
+    } else {
+        # Make a secure string out of our client secret
+        $secStringPassword = ConvertTo-SecureString $UFOClientSecret -AsPlainText -Force
+        # And make a new credentials object that we'll pass to the UniFLOW Online powershell cmdlet
+        $credObject = New-Object System.Management.Automation.PSCredential($UFOClientID, $secStringPassword)
+        # Now actually log in 
+        Open-MomoConnection -TenantDomain $UFOURL -NonInteractiveUserApplication $credObject
+        
+    }
+   
+}
+catch {
+    Write-Error -Message "Error Logging in to UniFLOW Online. Error returned was $_"
+    Exit 1
+}
+
+
+# How many users are in this file
+$total = $data.Count
+
+# How many users we've processed so far
+$count = 0
+
+# Loop through every row 
+foreach ($row in $data) {
+    $count++
+    $login = $row.login
+    $tid = $row.tid
+
+    if (-not $tid -Match '^[0-9a-fA-F]{8}$') {
+        Write-Error -Message "Card number for $login on row $count is not valid hexadecimal: $tid" -Category InvalidData
+        Continue
+    }
+
+    if (-not $login -Match '^[a-zA-Z]{3,8}\d$') {
+        Write-Error -Message "Username $login on row $count does not match expected format!" -Category InvalidData
+        Continue
+    }
+    
+    # Update progress bar
+    Write-Progress -Activity "Processing CSV" -Status "Updating login for '$login@$Domain'" -PercentComplete (($count / $total) * 100)
+    
+    try {
+        # Add-MomoUserIdentity -Email "$login@$Domain" -IdentityType 'CardNumber' -IdentityValue "$tid"
+    }
+    catch {
+        Write-Error "Failed to process login: $login@$Domain with tid: $tid - $_"
+        Continue
+    }
+}
+
+Write-Host "Processing complete."
