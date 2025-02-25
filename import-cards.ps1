@@ -7,15 +7,21 @@ param (
     [string]$Domain, # Your email domain (e.g. example.com) which is used to match users
 
     [Parameter(Mandatory = $true, ParameterSetName = "Interactive")]
-    [switch]$Interactive = $true, # If true, you'll be asked to log in to UniFLOW Online 
+    [switch]$Interactive, # If true, you'll be asked to log in to UniFLOW Online 
 
     [Parameter(Mandatory = $true, ParameterSetName = "NonInteractive")]
     [string]$UFOClientID = $Null, # The UniFLOW Online Client ID
     [string]$UFOClientSecret = $Null # The UniFLOW Online Secret
 )
 
-# This can be installed by running Install-Script -Name NTware.Ufo.PowerShell.ObjectManagement in Powershell 
-Import-Module NTware.Ufo.PowerShell.ObjectManagement
+# Try and import the module. If that doesn't work (because it's not installed), exit with an error
+try {
+    Import-Module NTware.Ufo.PowerShell.ObjectManagement
+}
+catch {
+    Write-Error -Message "UniFLOW Powershell module not available. Install using Install-Module NTware.Ufo.PowerShell.ObjectManagement" -Category NotInstalled
+    Exit 1
+}
 
 # First, check if the CSV file exists
 if (-not (Test-Path $Path)) {
@@ -23,33 +29,34 @@ if (-not (Test-Path $Path)) {
     Exit 1
 }
 
-# Then we read the CSV file. We force it to become an array, otherwise Powershell gets a bit funny
-# and .count is empty
+# Then we read the CSV file. We need to cast it as an array, otherwise
+# the .count property breaks if there's only one entry
 [array]$data = Import-Csv -Path $Path
 
-# Check if the file has exactly two required columns
+# These are the columns that are required in our CSV file
 $requiredColumns = @("login", "tid")
+# Then we get the header names out of the CSV file
 $csvColumns = ($data | Get-Member -MemberType NoteProperty).Name
 
 # If the columns in the CSV file don't exactly match our required columns, exit
 if ((Compare-Object -ReferenceObject $requiredColumns -DifferenceObject $csvColumns).Count -gt 0) {
-    Write-Error -Message "CSV file must contain only 'login' and 'tid' columns." -Category InvalidData
+    Write-Error -Message "CSV file must contain 'login' and 'tid' columns (in that order)" -Category InvalidData
     Exit 1
 }
 
 try {
-    # If -Interactive has been set, ignore the Client ID and Client Secret and open the browser to log in
+    # If -Interactive has been passed, ignore the Client ID and Client Secret and open a window to log in
     # If it's not been set, grab the credentials from the command line
-    if($Interactive) {
+    if ($Interactive) {
         Open-MomoConnection -TenantDomain $UFOURL -Interactive
-    } else {
+    }
+    else {
         # Make a secure string out of our client secret
         $secStringPassword = ConvertTo-SecureString $UFOClientSecret -AsPlainText -Force
         # And make a new credentials object that we'll pass to the UniFLOW Online powershell cmdlet
         $credObject = New-Object System.Management.Automation.PSCredential($UFOClientID, $secStringPassword)
         # Now actually log in 
         Open-MomoConnection -TenantDomain $UFOURL -NonInteractiveUserApplication $credObject
-        
     }
    
 }
@@ -57,7 +64,6 @@ catch {
     Write-Error -Message "Error Logging in to UniFLOW Online. Error returned was $_"
     Exit 1
 }
-
 
 # How many users are in this file
 $total = $data.Count
@@ -67,22 +73,27 @@ $count = 0
 
 # Loop through every row 
 foreach ($row in $data) {
+    # Increment our count
     $count++
+    # Get the username
     $login = $row.login
+    # And get the card number
     $tid = $row.tid
 
+    # The TID must be an 8 character hex string
     if (-not $tid -Match '^[0-9a-fA-F]{8}$') {
         Write-Error -Message "Card number for $login on row $count is not valid hexadecimal: $tid" -Category InvalidData
         Continue
     }
 
-    if (-not $login -Match '^[a-zA-Z]{3,8}\d$') {
+    # The username must be between 3 and 7 characters long and must end with a digit
+    if (-not $login -Match '^[a-zA-Z]{3,7}\d$') {
         Write-Error -Message "Username $login on row $count does not match expected format!" -Category InvalidData
         Continue
     }
     
     # Update progress bar
-    Write-Progress -Activity "Processing CSV" -Status "Updating login for '$login@$Domain'" -PercentComplete (($count / $total) * 100)
+    Write-Progress -Activity "Processing CSV" -Status "Updating login for '$login@$Domain' with $tid" -PercentComplete (($count / $total) * 100)
     
     try {
         Add-MomoUserIdentity -Email "$login@$Domain" -IdentityType 'CardNumber' -IdentityValue "$tid"
