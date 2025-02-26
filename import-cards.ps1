@@ -1,14 +1,18 @@
 [CmdletBinding(DefaultParameterSetName = 'Interactive')]
 param (
+    # These parameters are required when running in either interactive or non-interactive mode
     [Parameter(Mandatory = $true, ParameterSetName = "Interactive")]
     [Parameter(Mandatory = $true, ParameterSetName = "NonInteractive")]
     [string]$Path = "login.csv", # The path to the CSV file. It MUST have two fields in it, login and tid
     [string]$UFOURL, # The URL to your UniFLOW Online Instance
     [string]$Domain, # Your email domain (e.g. example.com) which is used to match users
+    [string]$IdentityType = "CardNumber", # Which identity type you wish to update. Defaults to CardNumber
 
+    # This parameter is required when in interactive mode (default)
     [Parameter(Mandatory = $true, ParameterSetName = "Interactive")]
     [switch]$Interactive, # If true, you'll be asked to log in to UniFLOW Online 
 
+    # These two parameters are only required if using non-interactive mode. 
     [Parameter(Mandatory = $true, ParameterSetName = "NonInteractive")]
     [string]$UFOClientID = $Null, # The UniFLOW Online Client ID
     [string]$UFOClientSecret = $Null # The UniFLOW Online Secret
@@ -96,7 +100,7 @@ foreach ($row in $data) {
     Write-Progress -Activity "Processing CSV" -Status "Updating login for '$login@$Domain' with $tid" -PercentComplete (($count / $total) * 100)
     
     try {
-        Add-MomoUserIdentity -Email "$login@$Domain" -IdentityType 'CardNumber' -IdentityValue "$tid"
+        Add-MomoUserIdentity -Email "$login@$Domain" -IdentityType $IdentityType -IdentityValue "$tid"
     }
     catch {
         Write-Error "Failed to process login: $login@$Domain with tid: $tid - $_"
