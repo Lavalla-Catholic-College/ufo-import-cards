@@ -1,3 +1,4 @@
 *.csv
+*.log
 !demo.csv
 run.bat

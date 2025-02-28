@@ -7,6 +7,7 @@ param (
     [string]$UFOURL, # The URL to your UniFLOW Online Instance
     [string]$Domain, # Your email domain (e.g. example.com) which is used to match users
     [string]$IdentityType = "CardNumber", # Which identity type you wish to update. Defaults to CardNumber
+    [string]$LogFile = "results.log", # Where to write the results of the import
 
     # This parameter is required when in interactive mode (default)
     [Parameter(Mandatory = $true, ParameterSetName = "Interactive")]
@@ -75,6 +76,15 @@ $total = $data.Count
 # How many users we've processed so far
 $count = 0
 
+# How many failures there's been 
+$failures = 0
+
+# How many successes there's been
+$successes = 0
+
+# Make an empty table. 
+[PSCustomObject]$resultsTable = @()
+
 # Loop through every row 
 foreach ($row in $data) {
     # Increment our count
@@ -85,14 +95,24 @@ foreach ($row in $data) {
     $tid = $row.tid
 
     # The TID must be an 8 character hex string
-    if (-not $tid -Match '^[0-9a-fA-F]{8}$') {
-        Write-Error -Message "Card number for $login on row $count is not valid hexadecimal: $tid" -Category InvalidData
+    if (-not ($tid -Match '^[0-9a-fA-F]{8}$')) {
+        $resultsTable += @{
+            Login = $login;
+            TID = $tid;
+            Result = "Incorrect Card Number Format"
+        }
+        $failures++
         Continue
     }
 
     # The username must be between 3 and 7 characters long and must end with a digit
-    if (-not $login -Match '^[a-zA-Z]{3,7}\d$') {
-        Write-Error -Message "Username $login on row $count does not match expected format!" -Category InvalidData
+    if (-not ($login -Match '^[a-zA-Z]{3,7}\d$')) {
+        $resultsTable += @{
+            Login = $login;
+            TID = $tid;
+            Result = "Incorrect Username Format"
+        }
+        $failures++
         Continue
     }
     
@@ -100,12 +120,28 @@ foreach ($row in $data) {
     Write-Progress -Activity "Processing CSV" -Status "Updating login for '$login@$Domain' with $tid" -PercentComplete (($count / $total) * 100)
     
     try {
-        Add-MomoUserIdentity -Email "$login@$Domain" -IdentityType $IdentityType -IdentityValue "$tid"
+        Add-MomoUserIdentity -Email "$login@$Domain" -IdentityType $IdentityType -IdentityValue "$tid" | Out-Null
+        $resultsTable += @{
+            Login = $login;
+            TID = $tid;
+            Result = "Success"
+        }
+        $successes++
     }
     catch {
-        Write-Error "Failed to process login: $login@$Domain with tid: $tid - $_"
+        $resultsTable += @{
+            Login = $login;
+            TID = $tid;
+            Result = "Error Processing: $_"
+        }
+        $failures++
         Continue
     }
 }
 
-Write-Host "Processing complete."
+# Spit out the results of the table we made. This is written to log.txt
+$resultsTable | ForEach-Object {[PSCustomObject]$_} | Format-Table -AutoSize Login, TID, Result | Out-File -FilePath $LogFile
+
+# Then we count up all the users, the successful imports and the failed imports and output the table to the screen.
+@{ Total = $total; Successful = $successes; Failures = $failures } | ForEach-Object {[PSCustomObject]$_} | Format-Table -AutoSize Total, Successful, Failures
+Write-Host "Details of import written to $LogFile"
