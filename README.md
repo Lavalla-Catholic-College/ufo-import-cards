@@ -5,9 +5,15 @@
  `run.example.bat` is provided to make it easier for you to run it. Just make a copy called `run.bat`, replace the parameters as necessary, and run it.
 
 ## Parameters
+ `-Path`: Optional. Defaults to `login.csv`. This is the CSV file to read
+
  `-Interactive`: If provided, will open a small window where you'll be asked to log in with your UniFLOW Online credentials
 
  `-Domain`: Required. This is your email provider's domain (e.g. `mycompany.net`) and is combined with the `login` read from the CSV file to make an email address (e.g. `SMIITJOH1@mycompany.net`)
+
+`-IdentityType`: Optional. Defaults to `CardNumber`. This is the identity you wish to update in UniFLOW Online. Can be `Email`, `UserName`, `CardNumber`, `CardRegistrationCode` or `PIN`
+
+`-LogFile`: Optional. Defaults to `results.log`. When the script has finished, it'll print each user and what the result of the import was. 
 
  `-UFOURL`: Required. This is the URL to your UniFLOW Online tenant and will look like `mycompany.au.uniflowonline.com`
 
@@ -32,3 +38,5 @@
 `login` is the username part of their email address and MUST be in this format: `[A-Za-z]{3,7}\d` or in other words, between 3 and 7 letters long and exactly one digit at the end.
 
 `tid` MUST be a hexadecimal string of exactly 8 characters (`[A-Za-z0-9]{8}`) and is the card number. Make sure to test one of the card numbers at the printer before bulk-adding
+
+See `demo.csv` for an example
